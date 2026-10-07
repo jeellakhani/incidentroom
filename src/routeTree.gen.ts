@@ -10,33 +10,84 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkspaceRouteImport } from './routes/_workspace'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as WorkspaceDashboardRouteImport } from './routes/_workspace.dashboard'
+import { Route as WorkspaceIncidentsIndexRouteImport } from './routes/_workspace.incidents.index'
+import { Route as WorkspaceIncidentsNewRouteImport } from './routes/_workspace.incidents.new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceRoute = WorkspaceRouteImport.update({
+  id: '/_workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkspaceDashboardRoute = WorkspaceDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
+const WorkspaceIncidentsIndexRoute = WorkspaceIncidentsIndexRouteImport.update({
+  id: '/incidents/',
+  path: '/incidents/',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
+const WorkspaceIncidentsNewRoute = WorkspaceIncidentsNewRouteImport.update({
+  id: '/incidents/new',
+  path: '/incidents/new',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/dashboard': typeof WorkspaceDashboardRoute
+  '/incidents/new': typeof WorkspaceIncidentsNewRoute
+  '/incidents/': typeof WorkspaceIncidentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/dashboard': typeof WorkspaceDashboardRoute
+  '/incidents/new': typeof WorkspaceIncidentsNewRoute
+  '/incidents': typeof WorkspaceIncidentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_workspace': typeof WorkspaceRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_workspace/dashboard': typeof WorkspaceDashboardRoute
+  '/_workspace/incidents/new': typeof WorkspaceIncidentsNewRoute
+  '/_workspace/incidents/': typeof WorkspaceIncidentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/login' | '/dashboard' | '/incidents/new' | '/incidents/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/login' | '/dashboard' | '/incidents/new' | '/incidents'
+  id:
+    | '__root__'
+    | '/'
+    | '/_workspace'
+    | '/login'
+    | '/_workspace/dashboard'
+    | '/_workspace/incidents/new'
+    | '/_workspace/incidents/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  WorkspaceRoute: typeof WorkspaceRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +99,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_workspace': {
+      id: '/_workspace'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_workspace/dashboard': {
+      id: '/_workspace/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof WorkspaceDashboardRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/_workspace/incidents/': {
+      id: '/_workspace/incidents/'
+      path: '/incidents'
+      fullPath: '/incidents/'
+      preLoaderRoute: typeof WorkspaceIncidentsIndexRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/_workspace/incidents/new': {
+      id: '/_workspace/incidents/new'
+      path: '/incidents/new'
+      fullPath: '/incidents/new'
+      preLoaderRoute: typeof WorkspaceIncidentsNewRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
   }
 }
 
+interface WorkspaceRouteChildren {
+  WorkspaceDashboardRoute: typeof WorkspaceDashboardRoute
+  WorkspaceIncidentsNewRoute: typeof WorkspaceIncidentsNewRoute
+  WorkspaceIncidentsIndexRoute: typeof WorkspaceIncidentsIndexRoute
+}
+
+const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceDashboardRoute: WorkspaceDashboardRoute,
+  WorkspaceIncidentsNewRoute: WorkspaceIncidentsNewRoute,
+  WorkspaceIncidentsIndexRoute: WorkspaceIncidentsIndexRoute,
+}
+
+const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
+  WorkspaceRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  WorkspaceRoute: WorkspaceRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
