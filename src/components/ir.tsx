@@ -290,7 +290,7 @@ export function AddActionDialog({ incidentId, open, onOpenChange }: { incidentId
             </Field>
             <Field label="Priority">
               <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)} className="input">
-                {(["critical", "high", "medium", "low"] as Priority[]).map((p) => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}
+                {(["critical", "high", "medium", "low"] as Priority[]).map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </Field>
             <Field label="Due">

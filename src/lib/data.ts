@@ -41,14 +41,14 @@ export interface Incident {
   status: Status;
   team: string;
   startedAt: number;
-  resolvedAt?: number;
+  resolvedAt?: number | undefined;
   impact: string;
   systems: string[];
   roles: Record<RoleKey, string>;
   current: { text: string; by: string; at: number };
-  resolution?: string;
-  rootCause?: string;
-  summary?: string;
+  resolution?: string | undefined;
+  rootCause?: string | undefined;
+  summary?: string | undefined;
 }
 
 export interface TimelineEvent {
@@ -58,7 +58,7 @@ export interface TimelineEvent {
   kind: EventKind;
   title: string;
   by: string;
-  note?: string;
+  note?: string | undefined;
 }
 
 export interface Action {
@@ -68,7 +68,7 @@ export interface Action {
   owner: string;
   priority: Priority;
   status: ActionStatus;
-  due?: string;
+  due?: string | undefined;
 }
 
 export interface AuditEntry {
@@ -77,7 +77,7 @@ export interface AuditEntry {
   user: string;
   verb: string;
   object: string;
-  incidentId?: string;
+  incidentId?: string | undefined;
 }
 
 export interface Notification {
