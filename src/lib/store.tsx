@@ -69,6 +69,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [live, setLiveState] = useState(false);
   const [demoMode, setDemoModeState] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const created = useRef(0);
   const nowRef = useRef(now);
   nowRef.current = now;
 
@@ -128,18 +131,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [addEvent, log, notify]);
 
   const completeAction: Store["completeAction"] = useCallback((actionId, by = ME) => {
-    let found: Action | undefined;
-    setActions((list) => list.map((a) => {
-      if (a.id !== actionId) return a;
-      found = a;
-      return { ...a, status: "done" };
-    }));
-    // found is set synchronously by the updater in React 18+ batching only on next render; read from list instead
-    setTimeout(() => {
-      if (!found) return;
-      addEvent(found.incidentId, "people", `${person(by).short} completed an action`, by, found.title);
-      log(by, "completed action", found.title, found.incidentId);
-    }, 0);
+    const found = actionsRef.current.find((a) => a.id === actionId);
+    if (!found || found.status === "done") return;
+    setActions((list) => list.map((a) => (a.id === actionId ? { ...a, status: "done" } : a)));
+    addEvent(found.incidentId, "people", `${person(by).short} completed an action`, by, found.title);
+    log(by, "completed action", found.title, found.incidentId);
   }, [addEvent, log]);
 
   const startAction: Store["startAction"] = useCallback((actionId) => {
@@ -147,8 +143,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createIncident: Store["createIncident"] = useCallback((d, by = ME) => {
-    const num = 2049 + Math.floor(Math.random() * 1) + seq % 50;
-    const id = `INC-${num}`;
+    const id = `INC-${2051 + created.current++}`;
     const roles: Record<RoleKey, string> = { commander: d.commander, tech: "david", comms: "priya", observer: "alex" };
     const inc: Incident = {
       id, title: d.title, sev: d.sev, status: "detected", team: "Platform", startedAt: at(),
