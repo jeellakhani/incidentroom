@@ -14,7 +14,12 @@ import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as WorkspaceDashboardRouteImport } from './routes/_workspace.dashboard'
 import { Route as WorkspaceIncidentsIndexRouteImport } from './routes/_workspace.incidents.index'
+import { Route as WorkspaceIncidentsIdRouteImport } from './routes/_workspace.incidents.$id'
 import { Route as WorkspaceIncidentsNewRouteImport } from './routes/_workspace.incidents.new'
+import { Route as WorkspaceIncidentsIdIndexRouteImport } from './routes/_workspace.incidents.$id.index'
+import { Route as WorkspaceIncidentsIdActionsRouteImport } from './routes/_workspace.incidents.$id.actions'
+import { Route as WorkspaceIncidentsIdReportRouteImport } from './routes/_workspace.incidents.$id.report'
+import { Route as WorkspaceIncidentsIdTimelineRouteImport } from './routes/_workspace.incidents.$id.timeline'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,18 +45,52 @@ const WorkspaceIncidentsIndexRoute = WorkspaceIncidentsIndexRouteImport.update({
   path: '/incidents/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceIncidentsIdRoute = WorkspaceIncidentsIdRouteImport.update({
+  id: '/incidents/$id',
+  path: '/incidents/$id',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceIncidentsNewRoute = WorkspaceIncidentsNewRouteImport.update({
   id: '/incidents/new',
   path: '/incidents/new',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceIncidentsIdIndexRoute =
+  WorkspaceIncidentsIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => WorkspaceIncidentsIdRoute,
+  } as any)
+const WorkspaceIncidentsIdActionsRoute =
+  WorkspaceIncidentsIdActionsRouteImport.update({
+    id: '/actions',
+    path: '/actions',
+    getParentRoute: () => WorkspaceIncidentsIdRoute,
+  } as any)
+const WorkspaceIncidentsIdReportRoute =
+  WorkspaceIncidentsIdReportRouteImport.update({
+    id: '/report',
+    path: '/report',
+    getParentRoute: () => WorkspaceIncidentsIdRoute,
+  } as any)
+const WorkspaceIncidentsIdTimelineRoute =
+  WorkspaceIncidentsIdTimelineRouteImport.update({
+    id: '/timeline',
+    path: '/timeline',
+    getParentRoute: () => WorkspaceIncidentsIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/dashboard': typeof WorkspaceDashboardRoute
+  '/incidents/$id': typeof WorkspaceIncidentsIdRouteWithChildren
   '/incidents/new': typeof WorkspaceIncidentsNewRoute
   '/incidents/': typeof WorkspaceIncidentsIndexRoute
+  '/incidents/$id/actions': typeof WorkspaceIncidentsIdActionsRoute
+  '/incidents/$id/report': typeof WorkspaceIncidentsIdReportRoute
+  '/incidents/$id/timeline': typeof WorkspaceIncidentsIdTimelineRoute
+  '/incidents/$id/': typeof WorkspaceIncidentsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +98,10 @@ export interface FileRoutesByTo {
   '/dashboard': typeof WorkspaceDashboardRoute
   '/incidents/new': typeof WorkspaceIncidentsNewRoute
   '/incidents': typeof WorkspaceIncidentsIndexRoute
+  '/incidents/$id/actions': typeof WorkspaceIncidentsIdActionsRoute
+  '/incidents/$id/report': typeof WorkspaceIncidentsIdReportRoute
+  '/incidents/$id/timeline': typeof WorkspaceIncidentsIdTimelineRoute
+  '/incidents/$id': typeof WorkspaceIncidentsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -66,22 +109,51 @@ export interface FileRoutesById {
   '/_workspace': typeof WorkspaceRouteWithChildren
   '/login': typeof LoginRoute
   '/_workspace/dashboard': typeof WorkspaceDashboardRoute
+  '/_workspace/incidents/$id': typeof WorkspaceIncidentsIdRouteWithChildren
   '/_workspace/incidents/new': typeof WorkspaceIncidentsNewRoute
   '/_workspace/incidents/': typeof WorkspaceIncidentsIndexRoute
+  '/_workspace/incidents/$id/actions': typeof WorkspaceIncidentsIdActionsRoute
+  '/_workspace/incidents/$id/report': typeof WorkspaceIncidentsIdReportRoute
+  '/_workspace/incidents/$id/timeline': typeof WorkspaceIncidentsIdTimelineRoute
+  '/_workspace/incidents/$id/': typeof WorkspaceIncidentsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/dashboard' | '/incidents/new' | '/incidents/'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/incidents/$id'
+    | '/incidents/new'
+    | '/incidents/'
+    | '/incidents/$id/actions'
+    | '/incidents/$id/report'
+    | '/incidents/$id/timeline'
+    | '/incidents/$id/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/dashboard' | '/incidents/new' | '/incidents'
+  to:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/incidents/new'
+    | '/incidents'
+    | '/incidents/$id/actions'
+    | '/incidents/$id/report'
+    | '/incidents/$id/timeline'
+    | '/incidents/$id'
   id:
     | '__root__'
     | '/'
     | '/_workspace'
     | '/login'
     | '/_workspace/dashboard'
+    | '/_workspace/incidents/$id'
     | '/_workspace/incidents/new'
     | '/_workspace/incidents/'
+    | '/_workspace/incidents/$id/actions'
+    | '/_workspace/incidents/$id/report'
+    | '/_workspace/incidents/$id/timeline'
+    | '/_workspace/incidents/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -127,6 +199,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIncidentsIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/_workspace/incidents/$id': {
+      id: '/_workspace/incidents/$id'
+      path: '/incidents/$id'
+      fullPath: '/incidents/$id'
+      preLoaderRoute: typeof WorkspaceIncidentsIdRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/_workspace/incidents/new': {
       id: '/_workspace/incidents/new'
       path: '/incidents/new'
@@ -134,17 +213,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIncidentsNewRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/_workspace/incidents/$id/': {
+      id: '/_workspace/incidents/$id/'
+      path: '/'
+      fullPath: '/incidents/$id/'
+      preLoaderRoute: typeof WorkspaceIncidentsIdIndexRouteImport
+      parentRoute: typeof WorkspaceIncidentsIdRoute
+    }
+    '/_workspace/incidents/$id/actions': {
+      id: '/_workspace/incidents/$id/actions'
+      path: '/actions'
+      fullPath: '/incidents/$id/actions'
+      preLoaderRoute: typeof WorkspaceIncidentsIdActionsRouteImport
+      parentRoute: typeof WorkspaceIncidentsIdRoute
+    }
+    '/_workspace/incidents/$id/report': {
+      id: '/_workspace/incidents/$id/report'
+      path: '/report'
+      fullPath: '/incidents/$id/report'
+      preLoaderRoute: typeof WorkspaceIncidentsIdReportRouteImport
+      parentRoute: typeof WorkspaceIncidentsIdRoute
+    }
+    '/_workspace/incidents/$id/timeline': {
+      id: '/_workspace/incidents/$id/timeline'
+      path: '/timeline'
+      fullPath: '/incidents/$id/timeline'
+      preLoaderRoute: typeof WorkspaceIncidentsIdTimelineRouteImport
+      parentRoute: typeof WorkspaceIncidentsIdRoute
+    }
   }
 }
 
+interface WorkspaceIncidentsIdRouteChildren {
+  WorkspaceIncidentsIdActionsRoute: typeof WorkspaceIncidentsIdActionsRoute
+  WorkspaceIncidentsIdReportRoute: typeof WorkspaceIncidentsIdReportRoute
+  WorkspaceIncidentsIdTimelineRoute: typeof WorkspaceIncidentsIdTimelineRoute
+  WorkspaceIncidentsIdIndexRoute: typeof WorkspaceIncidentsIdIndexRoute
+}
+
+const WorkspaceIncidentsIdRouteChildren: WorkspaceIncidentsIdRouteChildren = {
+  WorkspaceIncidentsIdActionsRoute: WorkspaceIncidentsIdActionsRoute,
+  WorkspaceIncidentsIdReportRoute: WorkspaceIncidentsIdReportRoute,
+  WorkspaceIncidentsIdTimelineRoute: WorkspaceIncidentsIdTimelineRoute,
+  WorkspaceIncidentsIdIndexRoute: WorkspaceIncidentsIdIndexRoute,
+}
+
+const WorkspaceIncidentsIdRouteWithChildren =
+  WorkspaceIncidentsIdRoute._addFileChildren(WorkspaceIncidentsIdRouteChildren)
+
 interface WorkspaceRouteChildren {
   WorkspaceDashboardRoute: typeof WorkspaceDashboardRoute
+  WorkspaceIncidentsIdRoute: typeof WorkspaceIncidentsIdRouteWithChildren
   WorkspaceIncidentsNewRoute: typeof WorkspaceIncidentsNewRoute
   WorkspaceIncidentsIndexRoute: typeof WorkspaceIncidentsIndexRoute
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceDashboardRoute: WorkspaceDashboardRoute,
+  WorkspaceIncidentsIdRoute: WorkspaceIncidentsIdRouteWithChildren,
   WorkspaceIncidentsNewRoute: WorkspaceIncidentsNewRoute,
   WorkspaceIncidentsIndexRoute: WorkspaceIncidentsIndexRoute,
 }
