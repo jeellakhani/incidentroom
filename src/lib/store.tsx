@@ -1,13 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
-  ME, SEED_ACTIONS, SEED_AUDIT, SEED_INCIDENTS, SEED_NOTIFS, SEED_TIMELINE, START_NOW, SYSTEM, person,
-  type Action, type AuditEntry, type EventKind, type Incident, type Notification, type NotifCategory,
-  type Priority, type RoleKey, type Sev, type Status, type TimelineEvent,
+  setMe, setPeople, toPerson,
+  type Action, type AuditEntry, type EventKind, type Incident, type Notification,
+  type Person, type Priority, type RoleKey, type Sev, type Status, type TimelineEvent,
 } from "./data";
-
-let seq = 1000;
-const uid = (p: string) => `${p}-${++seq}`;
 
 export interface NewIncident {
   title: string;
@@ -15,271 +13,333 @@ export interface NewIncident {
   commander: string;
   systems: string[];
 }
+export interface IncidentPatch {
+  title?: string;
+  sev?: Sev;
+  impact?: string;
+  roles?: Partial<Record<RoleKey, string>>;
+  rootCause?: string;
+  resolution?: string;
+  summary?: string;
+}
+type TeamRole = "owner" | "responder" | "viewer";
+interface Team { id: string; name: string; role: TeamRole }
 
 interface Store {
+  ready: boolean;
+  loadError: string | null;
+  userId: string;
+  team: Team | null;
+  teams: Team[];
+  canEdit: boolean;
+  isOwner: boolean;
   now: number;
+  people: Person[];
   incidents: Incident[];
   timeline: TimelineEvent[];
   actions: Action[];
   audit: AuditEntry[];
   notifications: Notification[];
-  presence: Record<string, string[]>;
-  live: boolean;
-  demoMode: boolean;
-  demoStep: number;
-  setLive: (v: boolean) => void;
-  setDemoMode: (v: boolean) => void;
-  demoNext: () => string | null;
-  postEvent: (incidentId: string, kind: EventKind, text: string, by?: string) => void;
-  setStatus: (incidentId: string, status: Status, by?: string) => void;
-  updateCurrent: (incidentId: string, text: string, by?: string) => void;
-  addAction: (incidentId: string, a: { title: string; owner: string; priority: Priority; due?: string }, by?: string) => void;
-  completeAction: (actionId: string, by?: string) => void;
-  startAction: (actionId: string) => void;
-  createIncident: (d: NewIncident, by?: string) => string;
-  markAllRead: () => void;
+  refresh: () => Promise<void>;
+  switchTeam: (id: string) => void;
+  postEvent: (incidentRef: string, kind: EventKind, text: string) => Promise<boolean>;
+  setStatus: (incidentRef: string, status: Status) => Promise<boolean>;
+  updateCurrent: (incidentRef: string, text: string) => Promise<boolean>;
+  updateIncident: (incidentRef: string, p: IncidentPatch) => Promise<boolean>;
+  deleteIncident: (incidentRef: string) => Promise<boolean>;
+  addAction: (incidentRef: string, a: { title: string; owner: string; priority: Priority; due?: string }) => Promise<boolean>;
+  completeAction: (actionId: string) => Promise<boolean>;
+  startAction: (actionId: string) => Promise<boolean>;
+  createIncident: (d: NewIncident) => Promise<string | null>;
+  markAllRead: () => Promise<void>;
+  loadSample: () => Promise<boolean>;
+  clearSample: () => Promise<boolean>;
+  addMember: (email: string, role: TeamRole) => Promise<boolean>;
+  removeMember: (userId: string) => Promise<boolean>;
+  renameTeam: (name: string) => Promise<boolean>;
+  updateProfile: (name: string, title: string) => Promise<boolean>;
 }
 
 const Ctx = createContext<Store | null>(null);
-export const DEMO_ID = "INC-2050";
-export const DEMO_STEPS = [
-  "Incident detected",
-  "Sarah becomes Incident Commander",
-  "David joins",
-  "Root cause identified",
-  "Action assigned",
-  "Mitigation deployed",
-  "Impact decreases",
-  "Incident resolved",
-  "Post-incident report",
-];
+const TEAM_KEY = "incidentroom.team";
+const ms = (t: string | null | undefined) => (t ? new Date(t).getTime() : 0);
+
+/** Show a real failure message — never pretend an operation succeeded. */
+function fail(e: unknown, what: string): false {
+  const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
+  const friendly = /row-level security|permission denied/i.test(msg)
+    ? "You don't have permission to do that in this team."
+    : msg;
+  toast.error(`Couldn't ${what}`, { description: friendly });
+  return false;
+}
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [now, setNow] = useState(START_NOW);
-  const [incidents, setIncidents] = useState(SEED_INCIDENTS);
-  const [timeline, setTimeline] = useState(SEED_TIMELINE);
-  const [actions, setActions] = useState(SEED_ACTIONS);
-  const [audit, setAudit] = useState(SEED_AUDIT);
-  const [notifications, setNotifs] = useState(SEED_NOTIFS);
-  const [presence, setPresence] = useState<Record<string, string[]>>({
-    "INC-2048": ["sarah", "david", "priya"],
-    "INC-2045": ["david", "alex"],
-    "INC-2039": ["priya"],
-  });
-  const [live, setLiveState] = useState(false);
-  const [demoMode, setDemoModeState] = useState(false);
-  const [demoStep, setDemoStep] = useState(0);
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
-  const created = useRef(0);
-  const nowRef = useRef(now);
-  nowRef.current = now;
+  const [now, setNow] = useState(() => Date.now());
+  const [userId, setUserId] = useState("");
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [people, setPeopleState] = useState<Person[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [actions, setActions] = useState<Action[]>([]);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [notifications, setNotifs] = useState<Notification[]>([]);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const refByUuid = useRef(new Map<string, string>());
 
   useEffect(() => {
-    const t = setInterval(() => setNow((n) => n + 1000), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const at = () => nowRef.current;
-
-  const log = useCallback((user: string, verb: string, object: string, incidentId?: string) => {
-    setAudit((a) => [{ id: uid("au"), at: at(), user, verb, object, incidentId }, ...a]);
-  }, []);
-
-  const notify = useCallback((category: NotifCategory, title: string, body: string, toastIt = true) => {
-    setNotifs((ns) => [{ id: uid("n"), at: at(), category, title, body, read: false }, ...ns]);
-    if (toastIt) toast(title, { description: body });
-  }, []);
-
-  const addEvent = useCallback((incidentId: string, kind: EventKind, title: string, by: string, note?: string) => {
-    setTimeline((t) => [...t, { id: uid("ev"), incidentId, at: at(), kind, title, by, note }]);
-  }, []);
-
-  const patchIncident = useCallback((incidentId: string, p: Partial<Incident> | ((i: Incident) => Partial<Incident>)) => {
-    setIncidents((list) => list.map((i) => (i.id === incidentId ? { ...i, ...(typeof p === "function" ? p(i) : p) } : i)));
-  }, []);
-
-  const postEvent: Store["postEvent"] = useCallback((incidentId, kind, text, by = ME) => {
-    const title = kind === "decision" ? "Decision recorded" : kind === "system" ? "System event" : `${person(by).short} posted an update`;
-    addEvent(incidentId, kind, title, by, text);
-    log(by, kind === "decision" ? "recorded decision" : "posted update", text.slice(0, 60), incidentId);
-  }, [addEvent, log]);
-
-  const setStatus: Store["setStatus"] = useCallback((incidentId, status, by = ME) => {
-    let prev: Status | undefined;
-    setIncidents((list) => list.map((i) => {
-      if (i.id !== incidentId) return i;
-      prev = i.status;
-      return { ...i, status, resolvedAt: status === "resolved" ? at() : undefined };
-    }));
-    const label = status === "resolved" ? "Incident resolved" : `Status changed to ${status.toUpperCase()}`;
-    addEvent(incidentId, "status", label, by);
-    log(by, "changed status", `${(prev ?? "").toUpperCase() || "—"} → ${status.toUpperCase()}`, incidentId);
-  }, [addEvent, log]);
-
-  const updateCurrent: Store["updateCurrent"] = useCallback((incidentId, text, by = ME) => {
-    patchIncident(incidentId, { current: { text, by, at: at() } });
-    addEvent(incidentId, "update", "Current status updated", by, text);
-    log(by, "updated current status", text.slice(0, 60), incidentId);
-  }, [patchIncident, addEvent, log]);
-
-  const addAction: Store["addAction"] = useCallback((incidentId, a, by = ME) => {
-    setActions((list) => [{ id: uid("act"), incidentId, status: "pending", ...a }, ...list]);
-    addEvent(incidentId, "people", "Action assigned", by, `${a.title} → ${person(a.owner).name}`);
-    log(by, `assigned action to ${person(a.owner).name}`, a.title, incidentId);
-    if (a.owner === ME && by !== ME) notify("assignments", "You were assigned an action", a.title);
-  }, [addEvent, log, notify]);
-
-  const completeAction: Store["completeAction"] = useCallback((actionId, by = ME) => {
-    const found = actionsRef.current.find((a) => a.id === actionId);
-    if (!found || found.status === "done") return;
-    setActions((list) => list.map((a) => (a.id === actionId ? { ...a, status: "done" } : a)));
-    addEvent(found.incidentId, "people", `${person(by).short} completed an action`, by, found.title);
-    log(by, "completed action", found.title, found.incidentId);
-  }, [addEvent, log]);
-
-  const startAction: Store["startAction"] = useCallback((actionId) => {
-    setActions((list) => list.map((a) => (a.id === actionId ? { ...a, status: "in_progress" } : a)));
-  }, []);
-
-  const createIncident: Store["createIncident"] = useCallback((d, by = ME) => {
-    const id = `INC-${2051 + created.current++}`;
-    const roles: Record<RoleKey, string> = { commander: d.commander, tech: "david", comms: "priya", observer: "alex" };
-    const inc: Incident = {
-      id, title: d.title, sev: d.sev, status: "detected", team: "Platform", startedAt: at(),
-      impact: "Impact being assessed", systems: d.systems, roles,
-      current: { text: "Incident declared. Responders are being paged.", by, at: at() },
-    };
-    setIncidents((l) => [inc, ...l]);
-    setPresence((p) => ({ ...p, [id]: [by] }));
-    addEvent(id, "system", "Incident declared", by, d.title);
-    addEvent(id, "people", "Incident Commander assigned", by, `${person(d.commander).name} took command.`);
-    log(by, "created incident", `${id} · ${d.title}`, id);
-    return id;
-  }, [addEvent, log]);
-
-  const markAllRead = useCallback(() => setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))), []);
-
-  // ---------- Live simulation ----------
-  const simIdx = useRef(0);
-  const liveScript = useRef<(() => void)[]>([]);
-  liveScript.current = [
-    () => {
-      setPresence((p) => ({ ...p, "INC-2048": Array.from(new Set([...(p["INC-2048"] ?? []), "alex"])) }));
-      addEvent("INC-2048", "people", "Alex Johnson joined the incident room", "alex");
-      notify("updates", "Alex Johnson joined INC-2048", "Now 4 responders online.");
-    },
-    () => {
-      postEvent("INC-2048", "update", "p95 latency down from 4.8s to 1.9s after pool change.", "david");
-      notify("updates", "David updated INC-2048", "p95 latency down to 1.9s.");
-    },
-    () => {
-      const a = SEED_ACTIONS.find((x) => x.title === "Notify customer support");
-      if (a) completeAction(a.id, "priya");
-      notify("updates", "Priya completed “Notify customer support”", "INC-2048");
-    },
-    () => {
-      addEvent("INC-2048", "system", "Monitoring detected recovery", SYSTEM, "Checkout error rate back under 1%.");
-      notify("system", "Monitoring detected recovery", "INC-2048 error rate under 1%.");
-    },
-    () => addAction("INC-2048", { title: "Verify database recovery", owner: "sarah", priority: "high", due: "10 min" }, "david"),
-    () => {
-      setStatus("INC-2048", "monitoring", "sarah");
-      notify("updates", "Incident status updated", "INC-2048 is now MONITORING.");
-    },
-  ];
-
+  // Track auth user
   useEffect(() => {
-    if (!live) return;
-    const t = setInterval(() => {
-      const fn = liveScript.current[simIdx.current];
-      if (!fn) {
-        setLiveState(false);
-        toast("Simulation finished", { description: "All scripted teammate activity has played." });
-        return;
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? ""));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED" || event === "INITIAL_SESSION") {
+        setUserId(session?.user?.id ?? "");
       }
-      fn();
-      simIdx.current += 1;
-    }, 5000);
-    return () => clearInterval(t);
-  }, [live]);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
-  // ---------- Demo mode ----------
-  const demoNext = useCallback((): string | null => {
-    const s = demoStep;
-    const id = DEMO_ID;
-    switch (s) {
-      case 0: {
-        const inc: Incident = {
-          id, title: "Payment webhook failures", sev: 2, status: "detected", team: "Payments", startedAt: at(),
-          impact: "~40% of payment confirmations delayed", systems: ["Payments", "API"],
-          roles: { commander: "sarah", tech: "david", comms: "priya", observer: "alex" },
-          current: { text: "Webhook delivery errors spiking from payment provider.", by: SYSTEM, at: at() },
-          rootCause: "Webhook signing secret expired on the gateway.",
-          resolution: "Signing secret rotated and failed webhooks replayed.",
-          summary: "Payment confirmations were delayed because the webhook gateway rejected signed payloads after its signing secret expired.",
-        };
-        setIncidents((l) => [inc, ...l.filter((i) => i.id !== id)]);
-        setPresence((p) => ({ ...p, [id]: [] }));
-        addEvent(id, "system", "Incident detected", SYSTEM, "Webhook 401 rate above 30%.");
-        log(SYSTEM, "created incident", `${id} · Payment webhook failures`, id);
-        notify("system", "New incident: INC-2050", "Payment webhook failures · SEV-2");
-        break;
-      }
-      case 1:
-        setPresence((p) => ({ ...p, [id]: ["sarah"] }));
-        addEvent(id, "people", "Sarah Chen assigned as Incident Commander", "sarah");
-        log("sarah", "became Incident Commander", id, id);
-        break;
-      case 2:
-        setPresence((p) => ({ ...p, [id]: ["sarah", "david", "priya"] }));
-        addEvent(id, "people", "David Lee and Priya Shah joined", "david");
-        break;
-      case 3:
-        setStatus(id, "investigating", "sarah");
-        patchIncident(id, { sev: 1, current: { text: "Webhook signing secret expired — gateway rejecting all signed payloads.", by: "david", at: at() } });
-        addEvent(id, "decision", "Root cause identified · severity raised to SEV-1", "david", "Signing secret expired at 09:30.");
-        log("sarah", "changed severity", "SEV-2 → SEV-1", id);
-        break;
-      case 4:
-        addAction(id, { title: "Rotate webhook signing secret", owner: "david", priority: "critical", due: "5 min" }, "sarah");
-        addAction(id, { title: "Post customer status update", owner: "priya", priority: "high", due: "10 min" }, "sarah");
-        break;
-      case 5:
-        setStatus(id, "mitigating", "sarah");
-        setActions((l) => l.map((a) => (a.incidentId === id && a.owner === "david" ? { ...a, status: "done" } : a)));
-        addEvent(id, "update", "Mitigation deployed", "david", "New secret live; replaying failed webhooks.");
-        break;
-      case 6:
-        setStatus(id, "monitoring", "sarah");
-        patchIncident(id, { impact: "Under 2% of confirmations delayed", current: { text: "Replay complete. Failure rate down to 2% and falling.", by: "david", at: at() } });
-        setActions((l) => l.map((a) => (a.incidentId === id ? { ...a, status: "done" } : a)));
-        break;
-      case 7:
-        setStatus(id, "resolved", "sarah");
-        notify("updates", "INC-2050 resolved", "Payment webhook failures resolved.");
-        break;
-      default:
-        break;
+  const loadTeams = useCallback(async (uid: string) => {
+    const { data, error } = await supabase.from("team_members").select("role, team_id, teams(id, name)").eq("user_id", uid);
+    if (error) throw error;
+    const list: Team[] = (data ?? []).flatMap((r) => (r.teams ? [{ id: r.teams.id, name: r.teams.name, role: r.role as TeamRole }] : []));
+    setTeams(list);
+    const saved = typeof window !== "undefined" ? localStorage.getItem(TEAM_KEY) : null;
+    const pick = list.find((t) => t.id === saved) ?? list.find((t) => t.role === "owner") ?? list[0];
+    setTeamId(pick?.id ?? null);
+    return pick?.id ?? null;
+  }, []);
+
+  const loadTeamData = useCallback(async (tid: string, uid: string) => {
+    const [mem, inc, ev, act, au, no] = await Promise.all([
+      supabase.from("team_members").select("user_id, role").eq("team_id", tid),
+      supabase.from("incidents").select("*").eq("team_id", tid).order("started_at", { ascending: false }),
+      supabase.from("incident_events").select("*").eq("team_id", tid).order("created_at", { ascending: false }).limit(1000),
+      supabase.from("incident_actions").select("*").eq("team_id", tid).order("created_at", { ascending: false }),
+      supabase.from("audit_log").select("*").eq("team_id", tid).order("created_at", { ascending: false }).limit(300),
+      supabase.from("notifications").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
+    ]);
+    const err = mem.error ?? inc.error ?? ev.error ?? act.error ?? au.error ?? no.error;
+    if (err) throw err;
+    const ids = (mem.data ?? []).map((m) => m.user_id);
+    const prof = ids.length ? await supabase.from("profiles").select("id, display_name, email, title").in("id", ids) : { data: [], error: null };
+    if (prof.error) throw prof.error;
+    const ppl = (mem.data ?? []).map((m) => {
+      const p = prof.data?.find((x) => x.id === m.user_id);
+      return toPerson(m.user_id, p?.display_name || p?.email?.split("@")[0] || "Teammate", p?.title ?? "", m.role as TeamRole);
+    });
+    setPeople(ppl);
+    setPeopleState(ppl);
+
+    const map = new Map<string, string>();
+    const incs: Incident[] = (inc.data ?? []).map((r) => {
+      map.set(r.id, r.ref);
+      return {
+        id: r.ref, uuid: r.id, title: r.title, sev: r.sev as Sev, status: r.status as Status, team: r.team_label,
+        startedAt: ms(r.started_at), resolvedAt: r.resolved_at ? ms(r.resolved_at) : undefined,
+        impact: r.impact, systems: r.systems ?? [],
+        roles: { commander: r.commander_id ?? "", tech: r.tech_id ?? "", comms: r.comms_id ?? "", observer: r.observer_id ?? "" },
+        current: { text: r.current_text, by: r.current_by ?? "", at: ms(r.current_at) },
+        rootCause: r.root_cause ?? undefined, resolution: r.resolution ?? undefined, summary: r.summary ?? undefined,
+        isSample: r.is_sample,
+      };
+    });
+    refByUuid.current = map;
+    setIncidents(incs);
+    setTimeline((ev.data ?? []).map((r) => ({
+      id: r.id, incidentId: map.get(r.incident_id) ?? "", at: ms(r.created_at), kind: r.kind as EventKind,
+      title: r.title, by: r.actor_id ?? "", note: r.note ?? undefined,
+    })));
+    setActions((act.data ?? []).map((r) => ({
+      id: r.id, incidentId: map.get(r.incident_id) ?? "", title: r.title, owner: r.owner_id,
+      priority: r.priority as Priority, status: r.status as Action["status"], due: r.due_label ?? undefined,
+    })));
+    setAudit((au.data ?? []).map((r) => ({
+      id: r.id, at: ms(r.created_at), user: r.actor_id ?? "system", verb: r.verb, object: r.object,
+      incidentId: r.incident_id ? map.get(r.incident_id) ?? r.incident_ref ?? undefined : r.incident_ref ?? undefined,
+    })));
+    setNotifs((no.data ?? []).map((r) => ({
+      id: r.id, at: ms(r.created_at), category: r.category, title: r.title, body: r.body, read: r.read,
+    })));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    try {
+      setLoadError(null);
+      setMe(userId);
+      const tid = teamId ?? (await loadTeams(userId));
+      if (tid) await loadTeamData(tid, userId);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Could not load your workspace.");
+    } finally {
+      setReady(true);
     }
-    setDemoStep(Math.min(s + 1, DEMO_STEPS.length));
-    return id;
-  }, [demoStep, addEvent, log, notify, setStatus, patchIncident, addAction]);
+  }, [userId, teamId, loadTeams, loadTeamData]);
 
-  const setDemoMode = (v: boolean) => {
-    setDemoModeState(v);
-    if (!v) setDemoStep(0);
+  useEffect(() => {
+    if (!userId) { setReady(false); setTeamId(null); return; }
+    setMe(userId);
+    loadTeams(userId).catch((e) => { setLoadError(e.message); setReady(true); });
+  }, [userId, loadTeams]);
+
+  useEffect(() => { if (userId && teamId) void refresh(); }, [userId, teamId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: refetch (debounced) when anything in this team changes.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    if (!teamId || !userId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => { clearTimeout(timer); timer = setTimeout(() => void refreshRef.current(), 400); };
+    const ch = supabase.channel(`team-${teamId}`);
+    for (const table of ["incidents", "incident_events", "incident_actions"] as const) {
+      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `team_id=eq.${teamId}` }, bump);
+    }
+    ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, (p) => {
+      const n = p.new as { title?: string; body?: string };
+      if (n.title) toast(n.title, { description: n.body });
+      bump();
+    });
+    ch.subscribe();
+    return () => { clearTimeout(timer); void supabase.removeChannel(ch); };
+  }, [teamId, userId]);
+
+  const team = teams.find((t) => t.id === teamId) ?? null;
+  const uuidOf = (ref: string) => incidents.find((i) => i.id === ref)?.uuid;
+
+  const addEvent = async (incUuid: string, kind: EventKind, title: string, note?: string) => {
+    const { error } = await supabase.from("incident_events").insert({
+      incident_id: incUuid, team_id: teamId!, kind, title, note: note ?? null, actor_id: userId,
+    });
+    if (error) throw error;
   };
-  const setLive = (v: boolean) => {
-    if (v && !liveScript.current[simIdx.current]) simIdx.current = 0;
-    setLiveState(v);
+
+  const api = useMemo(() => {
+    const run = async (what: string, fn: () => Promise<void>) => {
+      try { await fn(); await refresh(); return true; } catch (e) { return fail(e, what); }
+    };
+    return {
+      postEvent: (ref: string, kind: EventKind, text: string) => run("post the update", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const title = kind === "decision" ? "Decision recorded" : kind === "system" ? "System event" : "Update posted";
+        await addEvent(id, kind, title, text);
+      }),
+      setStatus: (ref: string, status: Status) => run("change the status", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const { error } = await supabase.from("incidents").update({ status }).eq("id", id);
+        if (error) throw error;
+        await addEvent(id, "status", status === "resolved" ? "Incident resolved" : `Status changed to ${status.toUpperCase()}`);
+      }),
+      updateCurrent: (ref: string, text: string) => run("update the current status", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const { error } = await supabase.from("incidents").update({ current_text: text, current_by: userId, current_at: new Date().toISOString() }).eq("id", id);
+        if (error) throw error;
+        await addEvent(id, "update", "Current status updated", text);
+      }),
+      updateIncident: (ref: string, p: IncidentPatch) => run("save the incident", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const row: Record<string, unknown> = {};
+        if (p.title !== undefined) row.title = p.title;
+        if (p.sev !== undefined) row.sev = p.sev;
+        if (p.impact !== undefined) row.impact = p.impact;
+        if (p.rootCause !== undefined) row.root_cause = p.rootCause;
+        if (p.resolution !== undefined) row.resolution = p.resolution;
+        if (p.summary !== undefined) row.summary = p.summary;
+        if (p.roles) {
+          const map = { commander: "commander_id", tech: "tech_id", comms: "comms_id", observer: "observer_id" } as const;
+          for (const [k, v] of Object.entries(p.roles)) row[map[k as RoleKey]] = v || null;
+        }
+        const { error } = await supabase.from("incidents").update(row).eq("id", id);
+        if (error) throw error;
+      }),
+      deleteIncident: (ref: string) => run("delete the incident", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const { error, count } = await supabase.from("incidents").delete({ count: "exact" }).eq("id", id);
+        if (error) throw error;
+        if (!count) throw new Error("Only team owners can delete incidents.");
+      }),
+      addAction: (ref: string, a: { title: string; owner: string; priority: Priority; due?: string }) => run("assign the action", async () => {
+        const id = uuidOf(ref); if (!id) throw new Error("Incident not found");
+        const { error } = await supabase.from("incident_actions").insert({
+          incident_id: id, team_id: teamId!, title: a.title, owner_id: a.owner, priority: a.priority, due_label: a.due ?? null,
+        });
+        if (error) throw error;
+      }),
+      completeAction: (actionId: string) => run("complete the action", async () => {
+        const { error } = await supabase.from("incident_actions").update({ status: "done" }).eq("id", actionId);
+        if (error) throw error;
+      }),
+      startAction: (actionId: string) => run("start the action", async () => {
+        const { error } = await supabase.from("incident_actions").update({ status: "in_progress" }).eq("id", actionId);
+        if (error) throw error;
+      }),
+      markAllRead: async () => {
+        const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", userId).eq("read", false);
+        if (error) fail(error, "mark notifications read"); else await refresh();
+      },
+      loadSample: () => run("load sample incidents", async () => {
+        const { error } = await supabase.rpc("load_sample_incidents", { _team: teamId! });
+        if (error) throw error;
+      }),
+      clearSample: () => run("remove sample incidents", async () => {
+        const { error } = await supabase.rpc("clear_sample_incidents", { _team: teamId! });
+        if (error) throw error;
+      }),
+      addMember: (email: string, role: TeamRole) => run("add the member", async () => {
+        const { error } = await supabase.rpc("add_team_member", { _team: teamId!, _email: email, _role: role });
+        if (error) throw error;
+      }),
+      removeMember: (uid: string) => run("remove the member", async () => {
+        const { error } = await supabase.rpc("remove_team_member", { _team: teamId!, _user: uid });
+        if (error) throw error;
+      }),
+      renameTeam: (name: string) => run("rename the team", async () => {
+        const { error } = await supabase.from("teams").update({ name }).eq("id", teamId!);
+        if (error) throw error;
+        setTeams((ts) => ts.map((t) => (t.id === teamId ? { ...t, name } : t)));
+      }),
+      updateProfile: (name: string, title: string) => run("save your profile", async () => {
+        const { error } = await supabase.from("profiles").update({ display_name: name, title }).eq("id", userId);
+        if (error) throw error;
+      }),
+    };
+  }, [incidents, teamId, userId, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const createIncident = async (d: NewIncident): Promise<string | null> => {
+    try {
+      if (!teamId) throw new Error("No team selected");
+      const { data, error } = await supabase.from("incidents").insert({
+        team_id: teamId, title: d.title, sev: d.sev, systems: d.systems, commander_id: d.commander || null,
+        current_text: "Incident declared. Responders are being notified.", current_by: userId, created_by: userId,
+      }).select("id, ref").single();
+      if (error) throw error;
+      await addEvent(data.id, "system", "Incident declared", d.title);
+      await addEvent(data.id, "people", "Incident Commander assigned", d.commander ? undefined : "No commander assigned yet.");
+      await refresh();
+      return data.ref;
+    } catch (e) {
+      fail(e, "create the incident");
+      return null;
+    }
+  };
+
+  const switchTeam = (id: string) => {
+    localStorage.setItem(TEAM_KEY, id);
+    setTeamId(id);
   };
 
   return (
     <Ctx.Provider value={{
-      now, incidents, timeline, actions, audit, notifications, presence, live, demoMode, demoStep,
-      setLive, setDemoMode, demoNext, postEvent, setStatus, updateCurrent, addAction, completeAction,
-      startAction, createIncident, markAllRead,
+      ready, loadError, userId, team, teams, now, people, incidents, timeline, actions, audit, notifications,
+      canEdit: team?.role === "owner" || team?.role === "responder", isOwner: team?.role === "owner",
+      refresh, switchTeam, createIncident, ...api,
     }}>
       {children}
     </Ctx.Provider>
