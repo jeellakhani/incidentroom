@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791790825026,
+      "tag": "0000_incidentroom_core",
+      "breakpoints": true
+    }
+  ]
 }

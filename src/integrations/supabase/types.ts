@@ -14,16 +14,424 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      ai_usage: {
+        Row: {
+          created_at: string
+          id: string
+          ok: boolean
+          provider: string
+          task: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ok: boolean
+          provider: string
+          task: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ok?: boolean
+          provider?: string
+          task?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      audit_log: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          incident_id: string | null
+          incident_ref: string | null
+          object: string
+          team_id: string
+          verb: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id?: string | null
+          incident_ref?: string | null
+          object: string
+          team_id: string
+          verb: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id?: string | null
+          incident_ref?: string | null
+          object?: string
+          team_id?: string
+          verb?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incident_actions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          due_label: string | null
+          id: string
+          incident_id: string
+          owner_id: string
+          priority: Database["public"]["Enums"]["action_priority"]
+          status: Database["public"]["Enums"]["action_status"]
+          team_id: string
+          title: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          due_label?: string | null
+          id?: string
+          incident_id: string
+          owner_id: string
+          priority?: Database["public"]["Enums"]["action_priority"]
+          status?: Database["public"]["Enums"]["action_status"]
+          team_id: string
+          title: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          due_label?: string | null
+          id?: string
+          incident_id?: string
+          owner_id?: string
+          priority?: Database["public"]["Enums"]["action_priority"]
+          status?: Database["public"]["Enums"]["action_status"]
+          team_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_actions_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_actions_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incident_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          incident_id: string
+          kind: Database["public"]["Enums"]["event_kind"]
+          note: string | null
+          team_id: string
+          title: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id: string
+          kind: Database["public"]["Enums"]["event_kind"]
+          note?: string | null
+          team_id: string
+          title: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id?: string
+          kind?: Database["public"]["Enums"]["event_kind"]
+          note?: string | null
+          team_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_events_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_events_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incidents: {
+        Row: {
+          commander_id: string | null
+          comms_id: string | null
+          created_at: string
+          created_by: string
+          current_at: string
+          current_by: string | null
+          current_text: string
+          id: string
+          impact: string
+          is_sample: boolean
+          observer_id: string | null
+          ref: string
+          resolution: string | null
+          resolved_at: string | null
+          root_cause: string | null
+          sev: number
+          started_at: string
+          status: Database["public"]["Enums"]["incident_status"]
+          summary: string | null
+          systems: string[]
+          team_id: string
+          team_label: string
+          tech_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          commander_id?: string | null
+          comms_id?: string | null
+          created_at?: string
+          created_by?: string
+          current_at?: string
+          current_by?: string | null
+          current_text?: string
+          id?: string
+          impact?: string
+          is_sample?: boolean
+          observer_id?: string | null
+          ref?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          root_cause?: string | null
+          sev: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          summary?: string | null
+          systems?: string[]
+          team_id: string
+          team_label?: string
+          tech_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          commander_id?: string | null
+          comms_id?: string | null
+          created_at?: string
+          created_by?: string
+          current_at?: string
+          current_by?: string | null
+          current_text?: string
+          id?: string
+          impact?: string
+          is_sample?: boolean
+          observer_id?: string | null
+          ref?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          root_cause?: string | null
+          sev?: number
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          summary?: string | null
+          systems?: string[]
+          team_id?: string
+          team_label?: string
+          tech_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidents_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string
+          category: Database["public"]["Enums"]["notif_category"]
+          created_at: string
+          id: string
+          read: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string
+          category: Database["public"]["Enums"]["notif_category"]
+          created_at?: string
+          id?: string
+          read?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          category?: Database["public"]["Enums"]["notif_category"]
+          created_at?: string
+          id?: string
+          read?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string
+          email: string
+          id: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string
+          email?: string
+          id: string
+          title?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          email?: string
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      team_members: {
+        Row: {
+          created_at: string
+          role: Database["public"]["Enums"]["team_role"]
+          team_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["team_role"]
+          team_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["team_role"]
+          team_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      add_team_member: {
+        Args: {
+          _email: string
+          _role: Database["public"]["Enums"]["team_role"]
+          _team: string
+        }
+        Returns: undefined
+      }
+      can_edit_team: {
+        Args: { _team: string; _user: string }
+        Returns: boolean
+      }
+      clear_sample_incidents: { Args: { _team: string }; Returns: undefined }
+      is_team_member: {
+        Args: { _team: string; _user: string }
+        Returns: boolean
+      }
+      is_team_owner: {
+        Args: { _team: string; _user: string }
+        Returns: boolean
+      }
+      load_sample_incidents: { Args: { _team: string }; Returns: undefined }
+      remove_team_member: {
+        Args: { _team: string; _user: string }
+        Returns: undefined
+      }
+      shares_team: { Args: { _a: string; _b: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      action_priority: "critical" | "high" | "medium" | "low"
+      action_status: "pending" | "in_progress" | "done"
+      event_kind: "update" | "decision" | "system" | "status" | "people"
+      incident_status:
+        | "detected"
+        | "investigating"
+        | "mitigating"
+        | "monitoring"
+        | "resolved"
+      notif_category: "mentions" | "assignments" | "updates" | "system"
+      team_role: "owner" | "responder" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +558,19 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      action_priority: ["critical", "high", "medium", "low"],
+      action_status: ["pending", "in_progress", "done"],
+      event_kind: ["update", "decision", "system", "status", "people"],
+      incident_status: [
+        "detected",
+        "investigating",
+        "mitigating",
+        "monitoring",
+        "resolved",
+      ],
+      notif_category: ["mentions", "assignments", "updates", "system"],
+      team_role: ["owner", "responder", "viewer"],
+    },
   },
 } as const
