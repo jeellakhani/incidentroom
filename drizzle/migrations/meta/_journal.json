@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791790825026,
+      "tag": "0000_incidentroom_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791790848099,
+      "tag": "0001_action_completed_at",
+      "breakpoints": true
+    }
+  ]
+}
