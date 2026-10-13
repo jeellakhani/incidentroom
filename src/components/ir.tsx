@@ -176,7 +176,7 @@ export function Timeline({ events, limit }: { events: TimelineEvent[]; limit?: n
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium leading-snug">{e.title}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{person(e.by).name} · <span className="font-mono">{kindLabel[e.kind]}</span></p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{e.by ? person(e.by).name : "System"} · <span className="font-mono">{kindLabel[e.kind]}</span></p>
             {e.note && <p className="mt-1.5 text-sm text-foreground/80">“{e.note}”</p>}
           </div>
         </li>
