@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
-import { PEOPLE, SEV_INFO, SYSTEMS, type Sev } from "@/lib/data";
+import { ME, PEOPLE, SEV_INFO, SYSTEMS, type Sev } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { sevTone } from "@/components/ir";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ function NewIncident() {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [sev, setSev] = useState<Sev>(2);
-  const [commander, setCommander] = useState("sarah");
+  const [commander, setCommander] = useState(ME);
   const [systems, setSystems] = useState<string[]>([]);
   const [phase, setPhase] = useState<"form" | "creating" | "ready">("form");
 
@@ -31,11 +31,11 @@ function NewIncident() {
     e.preventDefault();
     if (!title.trim()) return;
     setPhase("creating");
-    setTimeout(() => {
-      const id = createIncident({ title: title.trim(), sev, commander, systems });
+    void createIncident({ title: title.trim().slice(0, 160), sev, commander, systems }).then((id) => {
+      if (!id) { setPhase("form"); return; }
       setPhase("ready");
-      setTimeout(() => navigate({ to: "/incidents/$id", params: { id } }), 800);
-    }, 1100);
+      setTimeout(() => navigate({ to: "/incidents/$id", params: { id } }), 700);
+    });
   };
 
   if (phase !== "form") {
@@ -57,7 +57,7 @@ function NewIncident() {
 
       <fieldset>
         <legend className="text-lg font-semibold"><span className="mr-2 font-mono text-sm text-primary">1</span>What happened?</legend>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Checkout API returning 500s" className="input mt-3 !min-h-12 !text-base" required autoFocus aria-label="Incident title" />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Checkout API returning 500s" minLength={3} maxLength={160} className="input mt-3 !min-h-12 !text-base" required autoFocus aria-label="Incident title" />
       </fieldset>
 
       <fieldset>

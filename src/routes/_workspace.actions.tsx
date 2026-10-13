@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ME } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { ActionCard, EmptyState, Label } from "@/components/ir";
 
@@ -18,8 +17,8 @@ export const Route = createFileRoute("/_workspace/actions")({
 const rank = { critical: 0, high: 1, medium: 2, low: 3 };
 
 function MyActions() {
-  const { actions } = useStore();
-  const mine = actions.filter((a) => a.owner === ME);
+  const { actions, userId } = useStore();
+  const mine = actions.filter((a) => a.owner === userId);
   const open = mine.filter((a) => a.status !== "done").sort((a, b) => rank[a.priority] - rank[b.priority]);
   const done = mine.filter((a) => a.status === "done");
   return (
