@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { fmtDur, fmtTime, person, SEV_INFO } from "@/lib/data";
 import { isActive, useStore } from "@/lib/store";
 import { ActionCard, Avatar, EmptyState, Label, SevBadge, StatusText, StatusTrack } from "@/components/ir";
@@ -20,9 +21,12 @@ export const Route = createFileRoute("/_workspace/dashboard")({
 const edge = { 1: "border-l-critical", 2: "border-l-high", 3: "border-l-medium", 4: "border-l-border" } as const;
 
 function Dashboard() {
-  const { incidents, actions, audit, now, demoMode, setDemoMode } = useStore();
+  const { incidents, actions, audit, now, userId, isOwner, loadSample } = useStore();
+  const [loading, setLoading] = useState(false);
+  const hour = new Date(now).getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const active = incidents.filter(isActive).sort((a, b) => a.sev - b.sev);
-  const mine = actions.filter((a) => a.owner === "sarah" && a.status !== "done" && active.some((i) => i.id === a.incidentId));
+  const mine = actions.filter((a) => a.owner === userId && a.status !== "done" && active.some((i) => i.id === a.incidentId));
   const crit = active.filter((i) => i.sev === 1).length;
   const high = active.filter((i) => i.sev === 2).length;
 
@@ -30,7 +34,7 @@ function Dashboard() {
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl sm:text-5xl">Good morning, Sarah.</h1>
+          <h1 className="font-display text-4xl sm:text-5xl">{greet}, {person(userId).short}.</h1>
           <p className="mt-1 text-muted-foreground">Here is what needs your attention.</p>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs" aria-label="Incident counts">
@@ -93,11 +97,15 @@ function Dashboard() {
             </ul>
           </section>
 
-          <section className="rounded-lg border bg-surface p-4">
-            <Label>Presentation</Label>
-            <p className="mt-2 text-sm text-muted-foreground">Walk through a full incident, from detection to report, step by step.</p>
-            <button onClick={() => setDemoMode(!demoMode)} className="btn-ghost mt-3">{demoMode ? "Hide demo controls" : "Start demo mode"}</button>
-          </section>
+          {isOwner && incidents.length === 0 && (
+            <section className="rounded-lg border bg-surface p-4">
+              <Label>Getting started</Label>
+              <p className="mt-2 text-sm text-muted-foreground">Load two clearly labelled sample incidents to explore the workspace. You can remove them anytime in Settings.</p>
+              <button disabled={loading} onClick={async () => { setLoading(true); await loadSample(); setLoading(false); }} className="btn-ghost mt-3">
+                {loading && <Loader2 className="size-4 animate-spin" />} Load sample incidents
+              </button>
+            </section>
+          )}
         </div>
       </div>
     </div>

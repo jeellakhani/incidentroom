@@ -1,16 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
-import { toast } from "sonner";
-import { PEOPLE, ROLES } from "@/lib/data";
+import { useEffect, useState, type ReactNode } from "react";
+import { Loader2 } from "lucide-react";
+import { person } from "@/lib/data";
+import { AI_LIMITS } from "@/lib/ai-shared";
 import { useStore } from "@/lib/store";
-import { Switch } from "@/components/ui/switch";
 import { Field } from "@/components/ir";
 
 export const Route = createFileRoute("/_workspace/settings")({
   head: () => ({
     meta: [
       { title: "Settings — IncidentRoom" },
-      { name: "description", content: "Workspace, notification, incident default and demo settings." },
+      { name: "description", content: "Profile, team and sample data settings." },
       { property: "og:title", content: "Settings — IncidentRoom" },
       { property: "og:description", content: "Configure your IncidentRoom workspace." },
     ],
@@ -27,60 +27,66 @@ function Section({ title, desc, children }: { title: string; desc: string; child
   );
 }
 
-function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center justify-between gap-4 rounded-md border bg-card p-3">
-      <span><span className="block text-sm font-medium">{label}</span>{desc && <span className="block text-xs text-muted-foreground">{desc}</span>}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </label>
-  );
+function SaveButton({ busy, children }: { busy: boolean; children: ReactNode }) {
+  return <button disabled={busy} className="btn-primary">{busy && <Loader2 className="size-4 animate-spin" />}{children}</button>;
 }
 
 function Settings() {
-  const { live, setLive, demoMode, setDemoMode } = useStore();
-  const [n, setN] = useState({ mentions: true, assignments: true, updates: true, system: false });
+  const { userId, team, teams, switchTeam, isOwner, incidents, renameTeam, updateProfile, loadSample, clearSample } = useStore();
+  const me = person(userId);
+  const [name, setName] = useState(me.name);
+  const [title, setTitle] = useState(me.title);
+  const [teamName, setTeamName] = useState(team?.name ?? "");
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => setTeamName(team?.name ?? ""), [team?.name]);
+  const samples = incidents.filter((i) => i.isSample).length;
+  const wrap = (k: string, fn: () => Promise<unknown>) => async () => { setBusy(k); await fn(); setBusy(null); };
+
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="font-display text-4xl">Settings</h1>
 
-      <Section title="Presentation" desc="Prototype controls for demos.">
-        <Toggle label="Demo Mode" desc="Step through a full incident from detection to report." checked={demoMode} onChange={setDemoMode} />
-        <Toggle label="Live simulation" desc="Teammates post updates every few seconds in INC-2048." checked={live} onChange={setLive} />
+      <Section title="Your profile" desc="How teammates see you.">
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void wrap("profile", () => updateProfile(name.trim().slice(0, 80), title.trim().slice(0, 80)))(); }}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Display name"><input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} className="input" /></Field>
+            <Field label="Job title"><input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} className="input" /></Field>
+          </div>
+          <SaveButton busy={busy === "profile"}>Save profile</SaveButton>
+        </form>
       </Section>
 
-      <Section title="Workspace" desc="How your organisation appears.">
-        <Field label="Workspace name"><input className="input" defaultValue="Acme Engineering" /></Field>
-        <Field label="Time zone"><select className="input" defaultValue="UTC"><option>UTC</option><option>Asia/Kolkata</option><option>America/New_York</option></select></Field>
+      <Section title="Team" desc="Each team's incidents are visible only to its members.">
+        {teams.length > 1 && (
+          <Field label="Active team">
+            <select value={team?.id} onChange={(e) => switchTeam(e.target.value)} className="input">
+              {teams.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
+            </select>
+          </Field>
+        )}
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void wrap("team", () => renameTeam(teamName.trim().slice(0, 80)))(); }}>
+          <Field label="Team name"><input required disabled={!isOwner} maxLength={80} value={teamName} onChange={(e) => setTeamName(e.target.value)} className="input disabled:opacity-60" /></Field>
+          {isOwner ? <SaveButton busy={busy === "team"}>Rename team</SaveButton> : <p className="text-xs text-muted-foreground">Only team owners can rename the team.</p>}
+        </form>
       </Section>
 
-      <Section title="Notifications" desc="What reaches you, and what doesn't.">
-        <Toggle label="Mentions" checked={n.mentions} onChange={(v) => setN({ ...n, mentions: v })} />
-        <Toggle label="Assignments" checked={n.assignments} onChange={(v) => setN({ ...n, assignments: v })} />
-        <Toggle label="Incident updates" checked={n.updates} onChange={(v) => setN({ ...n, updates: v })} />
-        <Toggle label="System events" checked={n.system} onChange={(v) => setN({ ...n, system: v })} />
+      <Section title="Sample data" desc="Sample incidents are labelled [Sample] and kept separate from real ones.">
+        <p className="text-sm">{samples ? `${samples} sample incident${samples > 1 ? "s" : ""} in this team.` : "No sample incidents in this team."}</p>
+        {isOwner ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={wrap("load", loadSample)} disabled={!!busy} className="btn-ghost">{busy === "load" && <Loader2 className="size-4 animate-spin" />} Load sample incidents</button>
+            <button onClick={() => { if (confirm("Delete all sample incidents?")) void wrap("clear", clearSample)(); }} disabled={!!busy || !samples} className="btn-ghost">{busy === "clear" && <Loader2 className="size-4 animate-spin" />} Remove sample incidents</button>
+          </div>
+        ) : <p className="text-xs text-muted-foreground">Only team owners can manage sample data.</p>}
       </Section>
 
-      <Section title="Incident defaults" desc="Pre-filled when declaring an incident.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Default severity"><select className="input" defaultValue="2">{[1, 2, 3, 4].map((s) => <option key={s} value={s}>SEV-{s}</option>)}</select></Field>
-          <Field label="Default incident commander"><select className="input" defaultValue="sarah">{PEOPLE.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
-        </div>
+      <Section title="AI assistant" desc="Suggestions only — nothing is changed without your approval.">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>Answers use only this incident's recorded data, separating confirmed facts from possible explanations.</li>
+          <li>Emails and account details are never sent to the AI provider; only first names are.</li>
+          <li>Limit: {AI_LIMITS.perHour} requests per hour and {AI_LIMITS.perDay} per day for each person.</li>
+        </ul>
       </Section>
-
-      <Section title="Roles & permissions" desc="What each incident role can do.">
-        <div className="divide-y rounded-md border bg-card">
-          {ROLES.map((r) => <div key={r.key} className="p-3"><p className="text-sm font-medium text-role">{r.label}</p><p className="text-xs text-muted-foreground">{r.desc}</p></div>)}
-        </div>
-      </Section>
-
-      <Section title="Appearance" desc="Built for long, high-stress sessions.">
-        <div className="flex gap-2">
-          <button className="btn-ghost !border-primary !text-primary" aria-pressed="true">Graphite (dark)</button>
-          <button className="btn-ghost" disabled title="Not available in prototype">Light</button>
-        </div>
-      </Section>
-
-      <div className="py-8"><button onClick={() => toast.success("Settings saved")} className="btn-primary">Save changes</button></div>
     </div>
   );
 }

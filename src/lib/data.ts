@@ -32,6 +32,7 @@ export const toPerson = (id: string, name: string, title = "", teamRole?: Person
   };
 };
 export const person = (id: string | null | undefined): Person => {
+  if (id === SYSTEM) return { id, name: "System", short: "System", title: "", initials: "⚙" };
   if (!id) return { id: "", name: "Unassigned", short: "Unassigned", title: "", initials: "—" };
   return PEOPLE.find((p) => p.id === id) ?? { id, name: "Former member", short: "Former", title: "", initials: "?" };
 };
