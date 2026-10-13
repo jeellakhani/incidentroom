@@ -1,13 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { useState, type ReactNode } from "react";
 import {
-  Bell, ClipboardList, FileText, LayoutGrid, Menu, Plus, ScrollText, Settings, Siren, Users, X, Play, RotateCcw,
+  Bell, ClipboardList, FileText, LayoutGrid, LogOut, Menu, Plus, ScrollText, Settings, Siren, Users,
 } from "lucide-react";
-import { fmtAgo, type NotifCategory } from "@/lib/data";
-import { DEMO_STEPS, isActive, useStore } from "@/lib/store";
+import { fmtAgo, person, type NotifCategory } from "@/lib/data";
+import { isActive, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { Avatar } from "./ir";
 
 const NAV = [
@@ -32,8 +32,8 @@ export function Logo({ className }: { className?: string }) {
 }
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
-  const { actions, incidents } = useStore();
-  const myOpen = actions.filter((a) => a.owner === "sarah" && a.status !== "done" && incidents.find((i) => i.id === a.incidentId && isActive(i))).length;
+  const { actions, incidents, userId } = useStore();
+  const myOpen = actions.filter((a) => a.owner === userId && a.status !== "done" && incidents.find((i) => i.id === a.incidentId && isActive(i))).length;
   return (
     <nav aria-label="Main" className="space-y-0.5">
       {NAV.map(({ to, label, icon: Icon }) => (
@@ -113,52 +113,24 @@ function Notifications() {
   );
 }
 
-function DemoPanel() {
-  const { demoMode, demoStep, demoNext, setDemoMode } = useStore();
-  const navigate = useNavigate();
-  if (!demoMode) return null;
-  const done = demoStep >= DEMO_STEPS.length;
-  const next = () => {
-    const step = demoStep;
-    const id = demoNext();
-    if (!id) return;
-    if (step === DEMO_STEPS.length - 1) navigate({ to: "/incidents/$id/report", params: { id } });
-    else navigate({ to: "/incidents/$id", params: { id } });
-  };
-  return (
-    <div className="fixed bottom-4 left-4 z-40 w-72 rounded-lg border bg-popover p-3 shadow-2xl">
-      <div className="flex items-center justify-between">
-        <span className="eyebrow !text-primary">Demo mode</span>
-        <button onClick={() => setDemoMode(false)} aria-label="Close demo mode" className="text-muted-foreground hover:text-foreground"><X className="size-4" /></button>
-      </div>
-      <ol className="mt-2 space-y-1">
-        {DEMO_STEPS.map((s, i) => (
-          <li key={s} className={cn("flex items-center gap-2 text-xs", i < demoStep ? "text-success" : i === demoStep ? "text-foreground" : "text-muted-foreground")}>
-            <span className="w-4 font-mono">{i < demoStep ? "✓" : i + 1}</span>{s}
-          </li>
-        ))}
-      </ol>
-      <button onClick={done ? () => { setDemoMode(false); setDemoMode(true); } : next} className="btn-primary mt-3 w-full justify-center">
-        {done ? <><RotateCcw className="size-4" /> Restart</> : <><Play className="size-4" /> {demoStep === 0 ? "Start demo" : "Next step"}</>}
-      </button>
-    </div>
-  );
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
-  const { incidents, live, setLive } = useStore();
+  const { incidents, team, userId, canEdit } = useStore();
+  const navigate = useNavigate();
+  const me = person(userId);
+  const signOut = async () => { await supabase.auth.signOut(); navigate({ to: "/login" }); };
   const [mobileOpen, setMobileOpen] = useState(false);
   const active = incidents.filter(isActive);
   return (
     <div className="min-h-screen bg-background">
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r bg-surface px-3 py-4 lg:flex">
         <Logo className="px-3" />
-        <p className="mt-1 px-3 text-xs text-muted-foreground">Acme Engineering</p>
-        <Link to="/incidents/new" className="btn-primary mx-1 mt-6 justify-center"><Plus className="size-4" /> Declare incident</Link>
+        <p className="mt-1 truncate px-3 text-xs text-muted-foreground">{team?.name}</p>
+        {canEdit && <Link to="/incidents/new" className="btn-primary mx-1 mt-6 justify-center"><Plus className="size-4" /> Declare incident</Link>}
         <div className="mt-6"><NavList /></div>
         <div className="mt-auto flex items-center gap-3 border-t px-2 pt-4">
-          <Avatar id="sarah" />
-          <div className="text-sm leading-tight"><p className="font-medium">Sarah Chen</p><p className="text-xs text-muted-foreground">Incident Commander</p></div>
+          <Avatar id={userId} />
+          <div className="min-w-0 flex-1 text-sm leading-tight"><p className="truncate font-medium">{me.name}</p><p className="text-xs capitalize text-muted-foreground">{me.teamRole}</p></div>
+          <button onClick={signOut} aria-label="Sign out" className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"><LogOut className="size-4" /></button>
         </div>
       </aside>
 
@@ -170,10 +142,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className={cn("size-2 rounded-full", active.length ? "bg-critical" : "bg-success")} aria-hidden />
             <span className="font-mono">{active.length}</span> Active Incident{active.length === 1 ? "" : "s"}
           </Link>
-          <label className="ml-auto hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-            <span className={cn("font-mono", live && "text-primary")}>Live simulation: {live ? "ON" : "OFF"}</span>
-            <Switch checked={live} onCheckedChange={setLive} aria-label="Toggle live simulation" />
-          </label>
+          <span className="ml-auto" />
           <Notifications />
         </header>
         <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
@@ -184,10 +153,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SheetHeader className="p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Logo /></SheetHeader>
           <Link to="/incidents/new" onClick={() => setMobileOpen(false)} className="btn-primary mt-4 justify-center"><Plus className="size-4" /> Declare incident</Link>
           <div className="mt-4"><NavList onNavigate={() => setMobileOpen(false)} /></div>
-          <label className="mt-6 flex items-center justify-between text-sm">Live simulation <Switch checked={live} onCheckedChange={setLive} /></label>
+          <button onClick={signOut} className="btn-ghost mt-6 w-full justify-center"><LogOut className="size-4" /> Sign out</button>
         </SheetContent>
       </Sheet>
-      <DemoPanel />
     </div>
   );
 }
