@@ -52,12 +52,8 @@ export function PriorityText({ p }: { p: Priority }) {
   return <span className={cn("font-mono text-[11px] uppercase tracking-wider", priTone[p])}>{p}</span>;
 }
 
-const avatarTone: Record<string, string> = {
-  sarah: "bg-primary/20 text-primary",
-  david: "bg-info/20 text-info",
-  priya: "bg-role/20 text-role",
-  alex: "bg-success/15 text-success",
-};
+const TONES = ["bg-primary/20 text-primary", "bg-info/20 text-info", "bg-role/20 text-role", "bg-success/15 text-success"];
+const toneFor = (id: string) => TONES[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % TONES.length];
 export function Avatar({ id, size = "md", className }: { id: string; size?: "sm" | "md" | "lg"; className?: string }) {
   const p = person(id);
   return (
@@ -65,7 +61,7 @@ export function Avatar({ id, size = "md", className }: { id: string; size?: "sm"
       title={p.name}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full font-mono font-semibold ring-2 ring-background",
-        avatarTone[id] ?? "bg-muted text-muted-foreground",
+        id ? toneFor(id) : "bg-muted text-muted-foreground",
         size === "sm" && "size-6 text-[9px]",
         size === "md" && "size-8 text-[11px]",
         size === "lg" && "size-12 text-sm",
@@ -190,13 +186,17 @@ export function Timeline({ events, limit }: { events: TimelineEvent[]; limit?: n
 }
 
 export function Composer({ incidentId, disabled }: { incidentId: string; disabled?: boolean }) {
-  const { postEvent } = useStore();
+  const { postEvent, canEdit } = useStore();
   const [text, setText] = useState("");
-  const send = (kind: EventKind) => {
-    if (!text.trim()) return;
-    postEvent(incidentId, kind, text.trim());
-    setText("");
+  const [busy, setBusy] = useState(false);
+  const send = async (kind: EventKind) => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    const ok = await postEvent(incidentId, kind, text.trim().slice(0, 2000));
+    setBusy(false);
+    if (ok) setText("");
   };
+  if (!canEdit) return <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">You have view-only access to this team.</p>;
   return (
     <div className="rounded-lg border bg-surface p-3">
       <label htmlFor={`composer-${incidentId}`} className="text-sm font-medium">What happened?</label>
@@ -211,9 +211,9 @@ export function Composer({ incidentId, disabled }: { incidentId: string; disable
         className="mt-2 w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-50"
       />
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button onClick={() => send("update")} disabled={!text.trim()} className="btn-primary">Post update</button>
-        <button onClick={() => send("decision")} disabled={!text.trim()} className="btn-ghost"><Flag className="size-3.5" /> Add decision</button>
-        <button onClick={() => send("system")} disabled={!text.trim()} className="btn-ghost"><Info className="size-3.5" /> Add system event</button>
+        <button onClick={() => send("update")} disabled={!text.trim() || busy} className="btn-primary">Post update</button>
+        <button onClick={() => send("decision")} disabled={!text.trim() || busy} className="btn-ghost"><Flag className="size-3.5" /> Add decision</button>
+        <button onClick={() => send("system")} disabled={!text.trim() || busy} className="btn-ghost"><Info className="size-3.5" /> Add system event</button>
         <span className="ml-auto hidden font-mono text-[11px] text-muted-foreground sm:inline">⌘↵ to post</span>
       </div>
     </div>
@@ -221,14 +221,14 @@ export function Composer({ incidentId, disabled }: { incidentId: string; disable
 }
 
 export function ActionCard({ a, showIncident }: { a: Action; showIncident?: boolean }) {
-  const { completeAction, startAction } = useStore();
+  const { completeAction, startAction, canEdit } = useStore();
   const done = a.status === "done";
   return (
     <div className={cn("animate-enter rounded-md border bg-surface p-3 transition-opacity", done && "opacity-60")}>
       <div className="flex items-start gap-3">
         <button
           onClick={() => !done && completeAction(a.id)}
-          disabled={done}
+          disabled={done || !canEdit}
           aria-label={done ? "Completed" : `Mark “${a.title}” complete`}
           className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border transition-colors", done ? "border-success bg-success text-background" : "hover:border-success")}
         >
@@ -244,7 +244,7 @@ export function ActionCard({ a, showIncident }: { a: Action; showIncident?: bool
               <Link to="/incidents/$id" params={{ id: a.incidentId }} className="font-mono text-primary hover:underline">{a.incidentId}</Link>
             )}
           </div>
-          {!done && a.status === "pending" && a.owner === ME && (
+          {canEdit && !done && a.status === "pending" && a.owner === ME && (
             <button onClick={() => startAction(a.id)} className="mt-2 text-xs text-primary hover:underline">Start working →</button>
           )}
         </div>
@@ -259,7 +259,7 @@ export function ActionCard({ a, showIncident }: { a: Action; showIncident?: bool
 export function AddActionDialog({ incidentId, open, onOpenChange }: { incidentId: string; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { addAction } = useStore();
   const [title, setTitle] = useState("Verify database recovery");
-  const [owner, setOwner] = useState("sarah");
+  const [owner, setOwner] = useState(ME);
   const [priority, setPriority] = useState<Priority>("high");
   const [due, setDue] = useState("10 min");
   return (
@@ -274,9 +274,9 @@ export function AddActionDialog({ incidentId, open, onOpenChange }: { incidentId
           onSubmit={(e) => {
             e.preventDefault();
             if (!title.trim()) return;
-            addAction(incidentId, { title: title.trim(), owner, priority, due });
-            onOpenChange(false);
-            setTitle("");
+            void addAction(incidentId, { title: title.trim(), owner: owner || ME, priority, due }).then((ok) => {
+              if (ok) { onOpenChange(false); setTitle(""); }
+            });
           }}
         >
           <Field label="Action">
@@ -321,6 +321,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 
 export function AddActionButton({ incidentId }: { incidentId: string }) {
   const [open, setOpen] = useState(false);
+  const { canEdit } = useStore();
+  if (!canEdit) return null;
   return (
     <>
       <button onClick={() => setOpen(true)} className="btn-ghost w-full justify-center"><Plus className="size-4" /> Add action</button>
